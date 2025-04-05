@@ -1,103 +1,210 @@
-import Image from "next/image";
+"use client"
+
+import type React from "react"
+
+import { useState } from "react"
+import { useChat } from "ai/react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Send, Lightbulb } from "lucide-react"
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24">
+      <div className="w-full max-w-4xl">
+        <h1 className="text-3xl font-bold text-center mb-8">CMPSC 461 Tutor</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        <Tabs defaultValue="chat" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="analyze">Analyze Expression</TabsTrigger>
+            <TabsTrigger value="upload">Upload Docs</TabsTrigger>
+          </TabsList>
+
+
+          <TabsContent value="chat" className="mt-4">
+            <ChatInterface />
+          </TabsContent>
+
+          <TabsContent value="analyze" className="mt-4">
+            <AnalyzeInterface />
+          </TabsContent>
+
+          <TabsContent value="upload" className="mt-4">
+            <UploadInterface />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </main>
+  )
 }
+
+function UploadInterface() {
+  const [file, setFile] = useState<File | null>(null)
+  const [message, setMessage] = useState("")
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) return
+
+    setIsUploading(true)
+    setMessage("")
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await response.json()
+      setMessage(data.message || data.error || "Upload successful!")
+    } catch (error) {
+      console.error("Error uploading file:", error)
+      setMessage("An error occurred while uploading. Please try again.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Upload Documents</CardTitle>
+        <CardDescription>Upload example breakdowns to improve tutoring responses</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleFileUpload} className="space-y-4">
+          <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} disabled={isUploading} />
+          <Button type="submit" className="w-full" disabled={isUploading || !file}>
+            {isUploading ? "Uploading..." : "Upload File"}
+          </Button>
+        </form>
+        {message && <div className="mt-4 p-2 bg-muted rounded-lg text-center">{message}</div>}
+      </CardContent>
+    </Card>
+  )
+}
+function ChatInterface() {
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: "/api/chat",
+    body: {
+      stream: true,
+    },
+  })
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Chat with CMPSC 461 Tutor</CardTitle>
+        <CardDescription>Ask questions about lambda calculus or get help with concepts</CardDescription>
+      </CardHeader>
+      <CardContent className="h-[60vh] overflow-y-auto space-y-4 p-4">
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-center">
+            <div className="space-y-2">
+              <Lightbulb className="h-12 w-12 mx-auto text-gray-400" />
+              <p className="text-lg text-gray-500">Start a conversation with your Lambda Calculus tutor</p>
+            </div>
+          </div>
+        ) : (
+          messages.map((message) => (
+            <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </CardContent>
+      <CardFooter>
+        <form onSubmit={handleSubmit} className="flex w-full space-x-2">
+          <Input
+            value={input}
+            onChange={handleInputChange}
+            placeholder="Ask a question about lambda calculus..."
+            className="flex-grow"
+            disabled={isLoading}
+          />
+          <Button type="submit" disabled={isLoading}>
+            <Send className="h-4 w-4 mr-2" />
+            Send
+          </Button>
+        </form>
+      </CardFooter>
+    </Card>
+  )
+}
+
+function AnalyzeInterface() {
+  const [expression, setExpression] = useState("")
+  const [analysis, setAnalysis] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleAnalyze = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!expression.trim()) return
+
+    setIsLoading(true)
+    setAnalysis("")
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expression }),
+      })
+
+      const data = await response.json()
+      setAnalysis(data.content)
+    } catch (error) {
+      console.error("Error analyzing expression:", error)
+      setAnalysis("An error occurred while analyzing the expression. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Analyze Expression</CardTitle>
+        <CardDescription>Enter an expression to get a step-by-step breakdown</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleAnalyze} className="space-y-4">
+          <Textarea
+            value={expression}
+            onChange={(e) => setExpression(e.target.value)}
+            placeholder="Enter an  expression"
+            className="min-h-[100px]"
+            disabled={isLoading}
+          />
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? "Analyzing..." : "Analyze Expression"}
+          </Button>
+        </form>
+
+        {analysis && (
+          <div className="mt-6 p-4 bg-muted rounded-lg">
+            <h3 className="text-lg font-medium mb-2">Analysis:</h3>
+            <div className="whitespace-pre-wrap">{analysis}</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
