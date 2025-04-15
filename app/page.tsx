@@ -150,6 +150,15 @@ function AnalyzeInterface() {
   const [expression, setExpression] = useState("")
   const [analysis, setAnalysis] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [currentStep, setCurrentStep] = useState(0)
+  const [steps, setSteps] = useState<{number: number; content: string; question: string; answer: string}[]>([])
+  const [userAnswer, setUserAnswer] = useState("")
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [verificationResult, setVerificationResult] = useState<{isCorrect: boolean; explanation: string; hint?: string} | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [showHint, setShowHint] = useState(false)
+  const [hint, setHint] = useState("")
+  const [isAskingQuestion, setIsAskingQuestion] = useState(false)
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -157,9 +166,14 @@ function AnalyzeInterface() {
 
     setIsLoading(true)
     setAnalysis("")
+    setCurrentStep(0)
+    setSteps([])
+    setUserAnswer("")
+    setVerificationResult(null)
+    setError(null)
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("http://localhost:5000/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -167,15 +181,128 @@ function AnalyzeInterface() {
         body: JSON.stringify({ expression }),
       })
 
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`)
+      }
+
       const data = await response.json()
       setAnalysis(data.content)
+      
+      // First try to use the structured steps from the response
+      if (data.steps && data.steps.length > 0) {
+        setSteps(data.steps)
+      } else {
+        // Fallback to parsing the content if structured steps aren't available
+        const stepRegex = /Step\s+(\d+):\s+(.+?)(?=\n\s*Step\s+\d+:|$)/g
+        const matches = [...data.content.matchAll(stepRegex)]
+        
+        if (matches.length === 0) {
+          setError("Could not parse steps from the response. Please try again.")
+          return
+        }
+
+        const parsedSteps = matches.map(match => ({
+          number: parseInt(match[1]),
+          content: match[2].trim(),
+          question: "", // Empty question for parsed steps
+          answer: "" // Empty answer for parsed steps
+        }))
+        
+        setSteps(parsedSteps)
+      }
     } catch (error) {
       console.error("Error analyzing expression:", error)
-      setAnalysis("An error occurred while analyzing the expression. Please try again.")
+      setError(error instanceof Error ? error.message : "An error occurred while analyzing the expression")
     } finally {
       setIsLoading(false)
     }
   }
+
+  const handleVerifyAnswer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!userAnswer.trim() || !steps[currentStep]) return
+
+    setIsVerifying(true)
+    try {
+      const response = await fetch("http://localhost:5000/api/verify-answer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          answer: userAnswer,
+          correct_answer: steps[currentStep].answer,
+          step: steps[currentStep].content,
+          is_question: isAskingQuestion
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log("Verification response:", data)
+      setVerificationResult({
+        isCorrect: data.is_correct === true,
+        explanation: data.explanation,
+        hint: data.hint
+      })
+      setShowHint(false)
+      setIsAskingQuestion(false)
+    } catch (error) {
+      console.error("Error verifying answer:", error)
+      setError(error instanceof Error ? error.message : "An error occurred while verifying your answer")
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
+  const handleNextStep = () => {
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1)
+      setUserAnswer("")
+      setVerificationResult(null)
+      setShowHint(false)
+    }
+  }
+
+  const handlePreviousStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1)
+      setUserAnswer("")
+      setVerificationResult(null)
+      setShowHint(false)
+    }
+  }
+
+  const handleRequestHint = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/verify-answer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          step: steps[currentStep].content,
+          correct_answer: steps[currentStep].answer,
+          request_hint: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setHint(data.hint);
+      setShowHint(true);
+    } catch (error) {
+      console.error("Error getting hint:", error);
+      setHint("Error getting hint. Please try again.");
+      setShowHint(true);
+    }
+  };
 
   return (
     <Card className="w-full">
@@ -188,19 +315,108 @@ function AnalyzeInterface() {
           <Textarea
             value={expression}
             onChange={(e) => setExpression(e.target.value)}
-            placeholder="Enter an  expression"
+            placeholder="Enter an expression"
             className="min-h-[100px]"
             disabled={isLoading}
           />
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Analyzing..." : "Analyze Expression"}
+            {isLoading ? "Analyzing..." : "Start Analysis"}
           </Button>
         </form>
 
-        {analysis && (
-          <div className="mt-6 p-4 bg-muted rounded-lg">
-            <h3 className="text-lg font-medium mb-2">Analysis:</h3>
-            <div className="whitespace-pre-wrap">{analysis}</div>
+        {error && (
+          <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {steps.length > 0 && (
+          <div className="mt-6 space-y-4">
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={handlePreviousStep}
+                disabled={currentStep === 0}
+                className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m15 18-6-6 6-6"/>
+                </svg>
+              </button>
+              <button
+                onClick={handleNextStep}
+                disabled={currentStep === steps.length - 1}
+                className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 bg-muted rounded-lg">
+              <div className="mb-4">
+                <h4 className="font-medium mb-2">Step {steps[currentStep].number} of {steps.length}</h4>
+                <div className="whitespace-pre-wrap">{steps[currentStep].content}</div>
+              </div>
+
+              {steps[currentStep].question && !isAskingQuestion && (
+                <div className="mb-4">
+                  <h4 className="font-medium mb-2">Question:</h4>
+                  <div className="whitespace-pre-wrap">{steps[currentStep].question}</div>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyAnswer} className="space-y-4">
+                <Textarea
+                  value={userAnswer}
+                  onChange={(e) => setUserAnswer(e.target.value)}
+                  placeholder={isAskingQuestion ? "Ask your question about this step..." : "Enter your answer..."}
+                  className="min-h-[100px]"
+                  disabled={isVerifying}
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" className="flex-1" disabled={isVerifying}>
+                    {isVerifying ? "Processing..." : isAskingQuestion ? "Ask Question" : "Submit Answer"}
+                  </Button>
+                  {!isAskingQuestion && !verificationResult?.isCorrect && !showHint && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handleRequestHint}
+                      className="flex-1"
+                    >
+                      Need a hint?
+                    </Button>
+                  )}
+                  {!isAskingQuestion && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setIsAskingQuestion(true)}
+                      className="flex-1"
+                    >
+                      Ask a Question
+                    </Button>
+                  )}
+                </div>
+              </form>
+
+              {verificationResult && (
+                <div className="mt-4 p-4 border border-gray-300 rounded-lg">
+                  <h4 className="font-medium mb-2">
+                    {isAskingQuestion ? "Answer to your question:" : verificationResult.isCorrect ? "Correct!" : "Not quite right"}
+                  </h4>
+                  <div className="whitespace-pre-wrap">{verificationResult.explanation}</div>
+                </div>
+              )}
+
+              {showHint && (
+                <div className="mt-4 p-4 border border-gray-300 rounded-lg">
+                  <h4 className="font-medium mb-2">Hint:</h4>
+                  <div className="whitespace-pre-wrap">{hint || "Think about the key concepts in this step."}</div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </CardContent>
