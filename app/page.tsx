@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useChat } from "ai/react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -46,19 +46,40 @@ function UploadInterface() {
   const [file, setFile] = useState<File | null>(null)
   const [message, setMessage] = useState("")
   const [isUploading, setIsUploading] = useState(false)
+  const [labels, setLabels] = useState<string[]>([])
+  const [selectedLabel, setSelectedLabel] = useState("")
+
+  // Fetch available labels on component mount
+  useEffect(() => {
+    const fetchLabels = async () => {
+      try {
+        const response = await fetch("http://localhost:5000/api/labels")
+        const data = await response.json()
+        setLabels(data.labels)
+        if (data.labels.length > 0) {
+          setSelectedLabel(data.labels[0])
+        }
+      } catch (error) {
+        console.error("Error fetching labels:", error)
+        setMessage("Error loading available labels")
+      }
+    }
+    fetchLabels()
+  }, [])
 
   const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) return
+    if (!file || !selectedLabel) return
 
     setIsUploading(true)
     setMessage("")
 
     const formData = new FormData()
     formData.append("file", file)
+    formData.append("label", selectedLabel)
 
     try {
-      const response = await fetch("/api/upload", {
+      const response = await fetch("http://localhost:5000/api/upload", {
         method: "POST",
         body: formData,
       })
@@ -81,8 +102,27 @@ function UploadInterface() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleFileUpload} className="space-y-4">
-          <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} disabled={isUploading} />
-          <Button type="submit" className="w-full" disabled={isUploading || !file}>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Select Topic</label>
+            <select
+              value={selectedLabel}
+              onChange={(e) => setSelectedLabel(e.target.value)}
+              className="w-full p-2 border rounded-md"
+              disabled={isUploading}
+            >
+              {labels.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Input 
+            type="file" 
+            onChange={(e) => setFile(e.target.files?.[0] || null)} 
+            disabled={isUploading} 
+          />
+          <Button type="submit" className="w-full" disabled={isUploading || !file || !selectedLabel}>
             {isUploading ? "Uploading..." : "Upload File"}
           </Button>
         </form>
@@ -159,6 +199,9 @@ function AnalyzeInterface() {
   const [showHint, setShowHint] = useState(false)
   const [hint, setHint] = useState("")
   const [isAskingQuestion, setIsAskingQuestion] = useState(false)
+  const [labelAskingQuestion , setLabelAskingQuestion] = useState(false)
+  const [problemType, setProblemType] = useState<string | null>(null)
+  const [examples, setExamples] = useState<string[]>([])
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,6 +214,8 @@ function AnalyzeInterface() {
     setUserAnswer("")
     setVerificationResult(null)
     setError(null)
+    setProblemType(null)
+    setExamples([])
 
     try {
       const response = await fetch("http://localhost:5000/api/analyze", {
@@ -178,7 +223,7 @@ function AnalyzeInterface() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ expression }),
+        body: JSON.stringify({ question: expression }),
       })
 
       if (!response.ok) {
@@ -187,7 +232,8 @@ function AnalyzeInterface() {
 
       const data = await response.json()
       setAnalysis(data.content)
-      
+      setProblemType(data.problem_type || null)
+      setExamples(data.examples || [])
       // First try to use the structured steps from the response
       if (data.steps && data.steps.length > 0) {
         setSteps(data.steps)
@@ -195,19 +241,16 @@ function AnalyzeInterface() {
         // Fallback to parsing the content if structured steps aren't available
         const stepRegex = /Step\s+(\d+):\s+(.+?)(?=\n\s*Step\s+\d+:|$)/g
         const matches = [...data.content.matchAll(stepRegex)]
-        
         if (matches.length === 0) {
           setError("Could not parse steps from the response. Please try again.")
           return
         }
-
         const parsedSteps = matches.map(match => ({
           number: parseInt(match[1]),
           content: match[2].trim(),
           question: "", // Empty question for parsed steps
           answer: "" // Empty answer for parsed steps
         }))
-        
         setSteps(parsedSteps)
       }
     } catch (error) {
@@ -250,6 +293,7 @@ function AnalyzeInterface() {
       })
       setShowHint(false)
       setIsAskingQuestion(false)
+      setLabelAskingQuestion(isAskingQuestion)
     } catch (error) {
       console.error("Error verifying answer:", error)
       setError(error instanceof Error ? error.message : "An error occurred while verifying your answer")
@@ -323,6 +367,20 @@ function AnalyzeInterface() {
             {isLoading ? "Analyzing..." : "Start Analysis"}
           </Button>
         </form>
+
+        {problemType && (
+          <div className="p-2 bg-blue-50 rounded-lg text-blue-900">
+            <strong>Detected Topic:</strong> {problemType}
+          </div>
+        )}
+        {examples && examples.length > 0 && (
+          <div className="p-2 bg-green-50 rounded-lg text-green-900">
+            <strong>Relevant Examples:</strong>
+            <ul className="list-disc ml-6">
+              {examples.map((ex, i) => <li key={i}>{ex}</li>)}
+            </ul>
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 p-4 bg-destructive/10 text-destructive rounded-lg">
@@ -404,7 +462,7 @@ function AnalyzeInterface() {
               {verificationResult && (
                 <div className="mt-4 p-4 border border-gray-300 rounded-lg">
                   <h4 className="font-medium mb-2">
-                    {isAskingQuestion ? "Answer to your question:" : verificationResult.isCorrect ? "Correct!" : "Not quite right"}
+                    {labelAskingQuestion ? "Answer to your question:" : verificationResult.isCorrect ? "Correct!" : "Not quite right"}
                   </h4>
                   <div className="whitespace-pre-wrap">{verificationResult.explanation}</div>
                 </div>
