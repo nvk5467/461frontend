@@ -15,7 +15,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24">
       <div className="w-full max-w-4xl">
-        <h1 className="text-3xl font-bold text-center mb-8">CMPSC 461 Tutor</h1>
+        <h1 className="text-3xl font-bold text-center mb-8">CMPSC 360 Tutor</h1>
 
         <Tabs defaultValue="chat" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
@@ -199,9 +199,10 @@ function AnalyzeInterface() {
   const [showHint, setShowHint] = useState(false)
   const [hint, setHint] = useState("")
   const [isAskingQuestion, setIsAskingQuestion] = useState(false)
-  const [labelAskingQuestion , setLabelAskingQuestion] = useState(false)
   const [problemType, setProblemType] = useState<string | null>(null)
   const [examples, setExamples] = useState<string[]>([])
+  const [isAttemptingOverallAnswer, setIsAttemptingOverallAnswer] = useState(false)
+  const [correctFinalAnswer, setCorrectFinalAnswer] = useState<string | null>(null)
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -216,6 +217,8 @@ function AnalyzeInterface() {
     setError(null)
     setProblemType(null)
     setExamples([])
+    setIsAttemptingOverallAnswer(false)
+    setCorrectFinalAnswer(null)
 
     try {
       const response = await fetch("http://localhost:5000/api/analyze", {
@@ -234,25 +237,40 @@ function AnalyzeInterface() {
       setAnalysis(data.content)
       setProblemType(data.problem_type || null)
       setExamples(data.examples || [])
+
+      let parsedSteps: {number: number; content: string; question: string; answer: string}[] = [];
       // First try to use the structured steps from the response
       if (data.steps && data.steps.length > 0) {
-        setSteps(data.steps)
+        parsedSteps = data.steps; // Use structured steps if available
       } else {
         // Fallback to parsing the content if structured steps aren't available
-        const stepRegex = /Step\s+(\d+):\s+(.+?)(?=\n\s*Step\s+\d+:|$)/g
+        const stepRegex = /Step\s+(\d+):\s+([\s\S]+?)(?=\n\s*Step\s+\d+:|$)/g; // Replaced .+? with [\s\S]+? to match newlines without 's' flag
         const matches = [...data.content.matchAll(stepRegex)]
         if (matches.length === 0) {
           setError("Could not parse steps from the response. Please try again.")
-          return
+          setIsLoading(false); // Ensure loading is false on error
+          return;
         }
-        const parsedSteps = matches.map(match => ({
+        parsedSteps = matches.map(match => ({
           number: parseInt(match[1]),
           content: match[2].trim(),
           question: "", // Empty question for parsed steps
           answer: "" // Empty answer for parsed steps
         }))
-        setSteps(parsedSteps)
       }
+      
+      setSteps(parsedSteps);
+      setCorrectFinalAnswer(data.final_answer || null);
+
+      // If steps are available, prompt for overall answer first
+      if (parsedSteps.length > 0) {
+        setIsAttemptingOverallAnswer(true);
+        setCurrentStep(0); // Still set to 0, but steps won't be shown yet
+      } else {
+        setIsAttemptingOverallAnswer(false);
+        setCurrentStep(0); // Start at the first step if no steps returned (shouldn't happen with current backend logic)
+      }
+
     } catch (error) {
       console.error("Error analyzing expression:", error)
       setError(error instanceof Error ? error.message : "An error occurred while analyzing the expression")
@@ -263,44 +281,95 @@ function AnalyzeInterface() {
 
   const handleVerifyAnswer = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!userAnswer.trim() || !steps[currentStep]) return
+    if (!userAnswer.trim()) return
 
     setIsVerifying(true)
+    setVerificationResult(null);
+    setError(null);
+
     try {
-      const response = await fetch("http://localhost:5000/api/verify-answer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          answer: userAnswer,
-          correct_answer: steps[currentStep].answer,
-          step: steps[currentStep].content,
-          is_question: isAskingQuestion
-        }),
-      })
+      let responseData;
+      if (isAttemptingOverallAnswer) {
+        // User is submitting the overall answer
+        const response = await fetch("http://localhost:5000/api/submit-overall-answer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            expression: expression, // Send original expression
+            user_answer: userAnswer,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        responseData = await response.json();
+
+        if (responseData.is_correct) {
+          setVerificationResult({
+            isCorrect: true,
+            explanation: responseData.explanation || "Your answer is correct!",
+            hint: ' '
+          });
+          setIsAttemptingOverallAnswer(false); // Reset for next analysis
+          setSteps([]); // Clear steps since they're not needed for correct answers
+          setCurrentStep(0);
+        } else {
+          setVerificationResult({
+            isCorrect: false,
+            explanation: responseData.explanation || "Your answer is incorrect.",
+            hint: ' ' // Backend doesn't provide hint for overall answer currently
+          });
+          // If incorrect, set steps and switch to step-by-step view
+          if (responseData.steps) {
+              setSteps(responseData.steps);
+              setCurrentStep(0);
+          }
+          setIsAttemptingOverallAnswer(false);
+        }
+
+      } else if (steps[currentStep]) {
+        // User is answering a question about a specific step or asking a question
+        const response = await fetch("http://localhost:5000/api/verify-answer", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            answer: userAnswer,
+            correct_answer: steps[currentStep].answer,
+            step: steps[currentStep].content,
+            is_question: isAskingQuestion,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        responseData = await response.json();
+
+        console.log("Verification response:", responseData);
+        setVerificationResult({
+          isCorrect: responseData.is_correct === true,
+          explanation: responseData.explanation,
+          hint: responseData.hint
+        });
+        setShowHint(false);
+        // isAskingQuestion state is handled by button clicks
       }
+      setUserAnswer(""); // Clear input after submission
 
-      const data = await response.json()
-      console.log("Verification response:", data)
-      setVerificationResult({
-        isCorrect: data.is_correct === true,
-        explanation: data.explanation,
-        hint: data.hint
-      })
-      setShowHint(false)
-      setIsAskingQuestion(false)
-      setLabelAskingQuestion(isAskingQuestion)
     } catch (error) {
-      console.error("Error verifying answer:", error)
-      setError(error instanceof Error ? error.message : "An error occurred while verifying your answer")
+      console.error("Error verifying answer:", error);
+      setError(error instanceof Error ? error.message : "An error occurred while verifying your answer");
     } finally {
-      setIsVerifying(false)
+      setIsVerifying(false);
     }
-  }
+  };
 
   const handleNextStep = () => {
     if (currentStep < steps.length - 1) {
@@ -308,6 +377,7 @@ function AnalyzeInterface() {
       setUserAnswer("")
       setVerificationResult(null)
       setShowHint(false)
+      setIsAskingQuestion(false); // Reset 'ask question' mode when moving steps
     }
   }
 
@@ -317,10 +387,12 @@ function AnalyzeInterface() {
       setUserAnswer("")
       setVerificationResult(null)
       setShowHint(false)
+      setIsAskingQuestion(false); // Reset 'ask question' mode when moving steps
     }
   }
 
   const handleRequestHint = async () => {
+    if (!steps[currentStep]) return; // Ensure a step is selected
     try {
       const response = await fetch("http://localhost:5000/api/verify-answer", {
         method: "POST",
@@ -388,36 +460,72 @@ function AnalyzeInterface() {
           </div>
         )}
 
-        {steps.length > 0 && (
-          <div className="mt-6 space-y-4">
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={handlePreviousStep}
-                disabled={currentStep === 0}
-                className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m15 18-6-6 6-6"/>
-                </svg>
-              </button>
-              <button
-                onClick={handleNextStep}
-                disabled={currentStep === steps.length - 1}
-                className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m9 18 6-6-6-6"/>
-                </svg>
-              </button>
+        {isAttemptingOverallAnswer && steps.length > 0 && ( // Show overall answer input form
+            <div className="mt-6 space-y-4">
+                <div className="p-4 bg-muted rounded-lg">
+                    <div className="mb-4">
+                      <h4 className="font-medium mb-2">Attempt the full problem:</h4>
+                       {/* Optionally display the original expression again */}
+                       <div className="whitespace-pre-wrap">{expression}</div>
+                    </div>
+                     <form onSubmit={handleVerifyAnswer} className="space-y-4">
+                         <Textarea
+                            value={userAnswer}
+                            onChange={(e) => setUserAnswer(e.target.value)}
+                            placeholder="Enter your final answer here..."
+                            className="min-h-[100px]"
+                            disabled={isVerifying}
+                         />
+                        <Button type="submit" className="w-full" disabled={isVerifying}>
+                           {isVerifying ? "Processing..." : "Submit Final Answer"}
+                        </Button>
+                     </form>
+                     {verificationResult && ( // Display verification result for overall answer
+                        <div className="mt-4 p-4 border border-gray-300 rounded-lg">
+                            <h4 className="font-medium mb-2">
+                                {verificationResult.isCorrect ? "Correct!" : "Incorrect"}
+                            </h4>
+                            <div className="whitespace-pre-wrap">{verificationResult.explanation}</div>
+                        </div>
+                    )}
+                </div>
             </div>
+        )}
+
+        {!isAttemptingOverallAnswer && steps.length > 0 && ( // Show step-by-step view if not attempting overall answer and steps are available
+          <div className="mt-6 space-y-4">
+            {!isAttemptingOverallAnswer && (
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={handlePreviousStep}
+                  disabled={currentStep === 0}
+                  className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m15 18-6-6 6-6"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleNextStep}
+                  disabled={currentStep === steps.length - 1}
+                  className="text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m9 18 6-6-6-6"/>
+                  </svg>
+                </button>
+              </div>
+            )}
 
             <div className="p-4 bg-muted rounded-lg">
-              <div className="mb-4">
-                <h4 className="font-medium mb-2">Step {steps[currentStep].number} of {steps.length}</h4>
-                <div className="whitespace-pre-wrap">{steps[currentStep].content}</div>
-              </div>
+              {steps[currentStep] && (
+                <div className="mb-4">
+                  <h4 className="font-medium mb-2">Step {steps[currentStep].number} of {steps.length}</h4>
+                  <div className="whitespace-pre-wrap">{steps[currentStep].content}</div>
+                </div>
+              )}
 
-              {steps[currentStep].question && !isAskingQuestion && (
+              {steps[currentStep]?.question && !isAskingQuestion && ( // Show step question if exists and not asking a question about a step
                 <div className="mb-4">
                   <h4 className="font-medium mb-2">Question:</h4>
                   <div className="whitespace-pre-wrap">{steps[currentStep].question}</div>
@@ -434,26 +542,16 @@ function AnalyzeInterface() {
                 />
                 <div className="flex gap-2">
                   <Button type="submit" className="flex-1" disabled={isVerifying}>
-                    {isVerifying ? "Processing..." : isAskingQuestion ? "Ask Question" : "Submit Answer"}
+                    {isVerifying ? "Processing..." : isAskingQuestion ? "Ask Question" : "Submit Step Answer"}
                   </Button>
                   {!isAskingQuestion && !verificationResult?.isCorrect && !showHint && (
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={handleRequestHint}
                       className="flex-1"
                     >
                       Need a hint?
-                    </Button>
-                  )}
-                  {!isAskingQuestion && (
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setIsAskingQuestion(true)}
-                      className="flex-1"
-                    >
-                      Ask a Question
                     </Button>
                   )}
                 </div>
@@ -462,7 +560,7 @@ function AnalyzeInterface() {
               {verificationResult && (
                 <div className="mt-4 p-4 border border-gray-300 rounded-lg">
                   <h4 className="font-medium mb-2">
-                    {labelAskingQuestion ? "Answer to your question:" : verificationResult.isCorrect ? "Correct!" : "Not quite right"}
+                    {verificationResult.isCorrect ? "Correct!" : "Not quite right"}
                   </h4>
                   <div className="whitespace-pre-wrap">{verificationResult.explanation}</div>
                 </div>

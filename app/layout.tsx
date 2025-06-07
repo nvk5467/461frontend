@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "Lambda Calculus Tutor",
+  title: "CMPSC 360 Tutor",
   description: "A chatbot tutor for learning lambda calculus",
 }
 
