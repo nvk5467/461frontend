@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Send, Lightbulb } from "lucide-react"
 
+type Chunk = string | { content: string };
+
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24">
@@ -48,6 +50,7 @@ function UploadInterface() {
   const [isUploading, setIsUploading] = useState(false)
   const [labels, setLabels] = useState<string[]>([])
   const [selectedLabel, setSelectedLabel] = useState("")
+  const [uploadType, setUploadType] = useState<"example" | "textbook">("example")
 
   // Fetch available labels on component mount
   useEffect(() => {
@@ -79,7 +82,11 @@ function UploadInterface() {
     formData.append("label", selectedLabel)
 
     try {
-      const response = await fetch("http://localhost:5000/api/upload", {
+      const endpoint = uploadType === "textbook" 
+        ? "http://localhost:5000/api/upload-textbook"
+        : "http://localhost:5000/api/upload"
+        
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
       })
@@ -98,10 +105,26 @@ function UploadInterface() {
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Upload Documents</CardTitle>
-        <CardDescription>Upload example breakdowns to improve tutoring responses</CardDescription>
+        <CardDescription>
+          {uploadType === "textbook" 
+            ? "Upload individual textbook chapters to improve tutoring responses. Each chapter should be uploaded separately with its corresponding topic label."
+            : "Upload example breakdowns to improve tutoring responses"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleFileUpload} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Upload Type</label>
+            <select
+              value={uploadType}
+              onChange={(e) => setUploadType(e.target.value as "example" | "textbook")}
+              className="w-full p-2 border rounded-md"
+              disabled={isUploading}
+            >
+              <option value="example">Example Breakdown</option>
+              <option value="textbook">Textbook Chapter</option>
+            </select>
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Select Topic</label>
             <select
@@ -116,17 +139,42 @@ function UploadInterface() {
                 </option>
               ))}
             </select>
+            {uploadType === "textbook" && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Select the topic that matches this chapter's content. This ensures the chapter is stored in the correct index for accurate retrieval.
+              </p>
+            )}
           </div>
-          <Input 
-            type="file" 
-            onChange={(e) => setFile(e.target.files?.[0] || null)} 
-            disabled={isUploading} 
-          />
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {uploadType === "textbook" ? "Upload Textbook Chapter" : "Upload File"}
+            </label>
+            <Input 
+              type="file" 
+              onChange={(e) => setFile(e.target.files?.[0] || null)} 
+              disabled={isUploading}
+              accept={uploadType === "textbook" ? ".pdf" : ".txt,.pdf,.md"}
+            />
+            {uploadType === "textbook" && (
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p>• Upload one chapter at a time</p>
+                <p>• Each chapter should be a separate PDF file</p>
+                <p>• Make sure to select the correct topic label for the chapter</p>
+                <p>• The system will automatically split the chapter into manageable chunks</p>
+              </div>
+            )}
+          </div>
           <Button type="submit" className="w-full" disabled={isUploading || !file || !selectedLabel}>
-            {isUploading ? "Uploading..." : "Upload File"}
+            {isUploading ? "Uploading..." : `Upload ${uploadType === "textbook" ? "Chapter" : "File"}`}
           </Button>
         </form>
-        {message && <div className="mt-4 p-2 bg-muted rounded-lg text-center">{message}</div>}
+        {message && (
+          <div className={`mt-4 p-2 rounded-lg text-center ${
+            message.includes("successfully") ? "bg-green-50 text-green-900" : "bg-muted"
+          }`}>
+            {message}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -200,7 +248,7 @@ function AnalyzeInterface() {
   const [hint, setHint] = useState("")
   const [isAskingQuestion, setIsAskingQuestion] = useState(false)
   const [problemType, setProblemType] = useState<string | null>(null)
-  const [examples, setExamples] = useState<string[]>([])
+  const [retrievedChunks, setRetrievedChunks] = useState<Chunk[]>([])
   const [isAttemptingOverallAnswer, setIsAttemptingOverallAnswer] = useState(false)
   const [correctFinalAnswer, setCorrectFinalAnswer] = useState<string | null>(null)
 
@@ -214,9 +262,9 @@ function AnalyzeInterface() {
     setSteps([])
     setUserAnswer("")
     setVerificationResult(null)
-    setError(null)
+    setError(null)  
     setProblemType(null)
-    setExamples([])
+    setRetrievedChunks([])
     setIsAttemptingOverallAnswer(false)
     setCorrectFinalAnswer(null)
 
@@ -236,7 +284,7 @@ function AnalyzeInterface() {
       const data = await response.json()
       setAnalysis(data.content)
       setProblemType(data.problem_type || null)
-      setExamples(data.examples || [])
+      setRetrievedChunks(data.retrieved_chunks || [])
 
       let parsedSteps: {number: number; content: string; question: string; answer: string}[] = [];
       // First try to use the structured steps from the response
@@ -445,11 +493,14 @@ function AnalyzeInterface() {
             <strong>Detected Topic:</strong> {problemType}
           </div>
         )}
-        {examples && examples.length > 0 && (
-          <div className="p-2 bg-green-50 rounded-lg text-green-900">
-            <strong>Relevant Examples:</strong>
-            <ul className="list-disc ml-6">
-              {examples.map((ex, i) => <li key={i}>{ex}</li>)}
+
+        {retrievedChunks && retrievedChunks.length > 0 && (
+          <div className="p-4 mt-4 bg-green-50 rounded-lg text-green-900">
+            <h4 className="font-medium mb-2">Retrieved Textbook Chunks:</h4>
+            <ul className="list-disc ml-6 space-y-2 text-sm">
+              {retrievedChunks.map((chunk, i) => (
+                <li key={i}>{typeof chunk === 'string' ? chunk : chunk.content}</li>
+              ))}
             </ul>
           </div>
         )}
