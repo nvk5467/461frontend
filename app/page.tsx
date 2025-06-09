@@ -56,7 +56,7 @@ function UploadInterface() {
   useEffect(() => {
     const fetchLabels = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/labels")
+        const response = await fetch("http://18.116.8.23:5000/api/labels")
         const data = await response.json()
         setLabels(data.labels)
         if (data.labels.length > 0) {
@@ -83,8 +83,8 @@ function UploadInterface() {
 
     try {
       const endpoint = uploadType === "textbook" 
-        ? "http://localhost:5000/api/upload-textbook"
-        : "http://localhost:5000/api/upload"
+        ? "http://18.116.8.23:5000/api/upload-textbook"
+        : "http://18.116.8.23:5000/api/upload"
         
       const response = await fetch(endpoint, {
         method: "POST",
@@ -269,7 +269,7 @@ function AnalyzeInterface() {
     setCorrectFinalAnswer(null)
 
     try {
-      const response = await fetch("http://localhost:5000/api/analyze", {
+      const response = await fetch("http://18.116.8.23:5000/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -339,7 +339,7 @@ function AnalyzeInterface() {
       let responseData;
       if (isAttemptingOverallAnswer) {
         // User is submitting the overall answer
-        const response = await fetch("http://localhost:5000/api/submit-overall-answer", {
+        const response = await fetch("http://18.116.8.23:5000/api/submit-overall-answer", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -381,7 +381,7 @@ function AnalyzeInterface() {
 
       } else if (steps[currentStep]) {
         // User is answering a question about a specific step or asking a question
-        const response = await fetch("http://localhost:5000/api/verify-answer", {
+        const response = await fetch("http://18.116.8.23:5000/api/verify-answer", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -442,7 +442,7 @@ function AnalyzeInterface() {
   const handleRequestHint = async () => {
     if (!steps[currentStep]) return; // Ensure a step is selected
     try {
-      const response = await fetch("http://localhost:5000/api/verify-answer", {
+      const response = await fetch("http://18.116.8.23:5000/api/verify-answer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
