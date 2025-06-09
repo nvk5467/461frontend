@@ -11,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Send, Lightbulb } from "lucide-react"
 import { BACKEND_URL } from "@/lib/utils";
+import { customFetch } from "@/lib/utils";
+
+
 
 
 type Chunk = string | { content: string };
@@ -59,7 +62,7 @@ function UploadInterface() {
     const fetchLabels = async () => {
       try {
         console.log(`${BACKEND_URL}/api/labels`)
-        const response = await fetch(`${BACKEND_URL}/api/labels`)
+        const response = await customFetch(`${BACKEND_URL}/api/labels`)
         const data = await response.json()
         setLabels(data.labels)
         if (data.labels.length > 0) {
@@ -89,7 +92,7 @@ function UploadInterface() {
         ? `${BACKEND_URL}/api/upload-textbook`
         : `${BACKEND_URL}/api/upload`
 
-      const response = await fetch(endpoint, {
+      const response = await customFetch(endpoint, {
         method: "POST",
         body: formData,
       })
@@ -272,7 +275,7 @@ function AnalyzeInterface() {
     setCorrectFinalAnswer(null)
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/analyze`, {
+      const response = await customFetch(`${BACKEND_URL}/api/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -342,7 +345,7 @@ function AnalyzeInterface() {
       let responseData;
       if (isAttemptingOverallAnswer) {
         // User is submitting the overall answer
-        const response = await fetch(`${BACKEND_URL}/api/submit-overall-answer`, {
+        const response = await customFetch(`${BACKEND_URL}/api/submit-overall-answer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -384,7 +387,7 @@ function AnalyzeInterface() {
 
       } else if (steps[currentStep]) {
         // User is answering a question about a specific step or asking a question
-        const response = await fetch(`${BACKEND_URL}/api/verify-answer`, {
+        const response = await customFetch(`${BACKEND_URL}/api/verify-answer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -446,7 +449,7 @@ function AnalyzeInterface() {
     if (!steps[currentStep]) return; // Ensure a step is selected
     console.log(`${BACKEND_URL}/api/verify-answer`)
     try {
-      const response = await fetch(`${BACKEND_URL}/api/verify-answer`, {
+      const response = await customFetch(`${BACKEND_URL}/api/verify-answer`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
