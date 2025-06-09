@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
     }
 
-    const flaskResponse = await fetch("http://localhost:5000/api/upload", {
+    const flaskResponse = await fetch("http://18.116.8.23:5000/api/upload", {
       method: "POST",
       body: formData,
     })
