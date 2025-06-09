@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-
+import { BACKEND_URL } from "@/lib/utils";
+import { customFetch } from "@/lib/utils";
 export async function POST(req: NextRequest) {
   try {
     const { messages, stream = false } = await req.json()
 
     // Forward the request to the Flask backend
-    const response = await fetch("http://18.116.8.23:5000/api/chat", {
+    const response = await customFetch(`${BACKEND_URL}/api/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

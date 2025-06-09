@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { BACKEND_URL } from "@/lib/utils";
+import { customFetch } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
     }
 
-    const flaskResponse = await fetch("http://18.116.8.23:5000/api/upload-textbook", {
+    const flaskResponse = await customFetch(`${BACKEND_URL}/api/upload-textbook`, {
       method: "POST",
       body: formData,
     })
