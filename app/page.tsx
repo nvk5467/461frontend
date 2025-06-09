@@ -443,6 +443,7 @@ function AnalyzeInterface() {
 
   const handleRequestHint = async () => {
     if (!steps[currentStep]) return; // Ensure a step is selected
+    console.log(`${BACKEND_URL}/api/verify-answer`)
     try {
       const response = await fetch(`${BACKEND_URL}/api/verify-answer`, {
         method: "POST",
