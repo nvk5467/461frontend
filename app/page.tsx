@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Send, Lightbulb } from "lucide-react"
+import { BACKEND_URL } from "@/lib/utils";
+
 
 type Chunk = string | { content: string };
 
@@ -56,7 +58,7 @@ function UploadInterface() {
   useEffect(() => {
     const fetchLabels = async () => {
       try {
-        const response = await fetch("http://18.116.8.23:5000/api/labels")
+        const response = await fetch(`${BACKEND_URL}/api/labels`)
         const data = await response.json()
         setLabels(data.labels)
         if (data.labels.length > 0) {
@@ -82,10 +84,10 @@ function UploadInterface() {
     formData.append("label", selectedLabel)
 
     try {
-      const endpoint = uploadType === "textbook" 
-        ? "http://18.116.8.23:5000/api/upload-textbook"
-        : "http://18.116.8.23:5000/api/upload"
-        
+      const endpoint = uploadType === "textbook"
+        ? `${BACKEND_URL}/api/upload-textbook`
+        : `${BACKEND_URL}/api/upload`
+
       const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
@@ -106,7 +108,7 @@ function UploadInterface() {
       <CardHeader>
         <CardTitle>Upload Documents</CardTitle>
         <CardDescription>
-          {uploadType === "textbook" 
+          {uploadType === "textbook"
             ? "Upload individual textbook chapters to improve tutoring responses. Each chapter should be uploaded separately with its corresponding topic label."
             : "Upload example breakdowns to improve tutoring responses"}
         </CardDescription>
@@ -149,9 +151,9 @@ function UploadInterface() {
             <label className="text-sm font-medium">
               {uploadType === "textbook" ? "Upload Textbook Chapter" : "Upload File"}
             </label>
-            <Input 
-              type="file" 
-              onChange={(e) => setFile(e.target.files?.[0] || null)} 
+            <Input
+              type="file"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
               disabled={isUploading}
               accept={uploadType === "textbook" ? ".pdf" : ".txt,.pdf,.md"}
             />
@@ -262,14 +264,14 @@ function AnalyzeInterface() {
     setSteps([])
     setUserAnswer("")
     setVerificationResult(null)
-    setError(null)  
+    setError(null)
     setProblemType(null)
     setRetrievedChunks([])
     setIsAttemptingOverallAnswer(false)
     setCorrectFinalAnswer(null)
 
     try {
-      const response = await fetch("http://18.116.8.23:5000/api/analyze", {
+      const response = await fetch(`${BACKEND_URL}/api/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -306,7 +308,7 @@ function AnalyzeInterface() {
           answer: "" // Empty answer for parsed steps
         }))
       }
-      
+
       setSteps(parsedSteps);
       setCorrectFinalAnswer(data.final_answer || null);
 
@@ -339,7 +341,7 @@ function AnalyzeInterface() {
       let responseData;
       if (isAttemptingOverallAnswer) {
         // User is submitting the overall answer
-        const response = await fetch("http://18.116.8.23:5000/api/submit-overall-answer", {
+        const response = await fetch(`${BACKEND_URL}/api/submit-overall-answer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -381,7 +383,7 @@ function AnalyzeInterface() {
 
       } else if (steps[currentStep]) {
         // User is answering a question about a specific step or asking a question
-        const response = await fetch("http://18.116.8.23:5000/api/verify-answer", {
+        const response = await fetch(`${BACKEND_URL}/api/verify-answer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -442,7 +444,7 @@ function AnalyzeInterface() {
   const handleRequestHint = async () => {
     if (!steps[currentStep]) return; // Ensure a step is selected
     try {
-      const response = await fetch("http://18.116.8.23:5000/api/verify-answer", {
+      const response = await fetch(`${BACKEND_URL}/api/verify-answer`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
