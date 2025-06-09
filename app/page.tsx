@@ -63,6 +63,7 @@ function UploadInterface() {
       try {
         console.log(`${BACKEND_URL}/api/labels`)
         const response = await customFetch(`${BACKEND_URL}/api/labels`)
+        console.log("Raw response:", response);
         const data = await response.json()
         setLabels(data.labels)
         if (data.labels.length > 0) {

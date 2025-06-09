@@ -18,5 +18,5 @@ export async function customFetch(url: string, options: RequestInit = {}) {
   });
 
   if (!res.ok) throw new Error("Fetch failed");
-  return res.json();
+  return res;
 }
