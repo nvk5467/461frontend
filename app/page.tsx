@@ -58,6 +58,7 @@ function UploadInterface() {
   useEffect(() => {
     const fetchLabels = async () => {
       try {
+        console.log(`${BACKEND_URL}/api/labels`)
         const response = await fetch(`${BACKEND_URL}/api/labels`)
         const data = await response.json()
         setLabels(data.labels)
