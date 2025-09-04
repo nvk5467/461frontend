@@ -13,6 +13,7 @@ import { Send, Lightbulb } from "lucide-react"
 import { BACKEND_URL } from "@/lib/utils";
 import { customFetch } from "@/lib/utils";
 import TruthTableBuilder from "@/components/TruthTableBuilder";
+import LoginModal from "@/components/LoginModal";
 
 
 
@@ -20,10 +21,92 @@ import TruthTableBuilder from "@/components/TruthTableBuilder";
 type Chunk = string | { content: string };
 
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [studentInfo, setStudentInfo] = useState<any>(null)
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const storedStudentId = localStorage.getItem('studentId')
+    if (storedStudentId) {
+      setIsLoggedIn(true)
+      // Optionally fetch student info
+      fetchStudentInfo(storedStudentId)
+    }
+  }, [])
+
+  const fetchStudentInfo = async (studentId: string) => {
+    try {
+      const response = await customFetch(`${BACKEND_URL}/api/student/${studentId}`)
+      const data = await response.json()
+      if (data.success) {
+        setStudentInfo(data.student)
+      }
+    } catch (error) {
+      console.error("Error fetching student info:", error)
+    }
+  }
+
+  const handleLogin = (studentId: string, student: any) => {
+    setIsLoggedIn(true)
+    setStudentInfo(student)
+    setShowLoginModal(false)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('studentId')
+    setIsLoggedIn(false)
+    setStudentInfo(null)
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle className="text-3xl font-bold">CMPSC 360 Tutor</CardTitle>
+              <CardDescription>
+                Please login or register to access the tutoring system
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center">
+              <Button 
+                onClick={() => setShowLoginModal(true)}
+                className="w-full"
+                size="lg"
+              >
+                Login / Register
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        {showLoginModal && (
+          <LoginModal
+            onLogin={handleLogin}
+            onClose={() => setShowLoginModal(false)}
+          />
+        )}
+      </main>
+    )
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24">
       <div className="w-full max-w-4xl">
-        <h1 className="text-3xl font-bold text-center mb-8">CMPSC 360 Tutor</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">CMPSC 360 Tutor</h1>
+          <div className="flex items-center gap-4">
+            {studentInfo && (
+              <div className="text-sm text-gray-600">
+                Welcome, {studentInfo.name || studentInfo.studentId}
+              </div>
+            )}
+            <Button variant="outline" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
+        </div>
 
         <Tabs defaultValue="chat" className="w-full">
           <TabsList className="flex w-full justify-between">
@@ -41,7 +124,7 @@ export default function Home() {
           </TabsContent> */}
 
           <TabsContent value="analyze" className="mt-4">
-            <AnalyzeInterface />
+            <AnalyzeInterface studentId={studentInfo?.studentId} />
           </TabsContent>
 
           <TabsContent value="inference" className="mt-4">
@@ -253,7 +336,7 @@ function ChatInterface() {
   )
 }
 
-function AnalyzeInterface() {
+function AnalyzeInterface({ studentId }: { studentId?: string }) {
   const [expression, setExpression] = useState("")
   const [analysis, setAnalysis] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -276,6 +359,7 @@ function AnalyzeInterface() {
   const [wrongAnswers, setWrongAnswers] = useState(0)
   const [showTruthTableBuilder, setShowTruthTableBuilder] = useState(false)
   const [truthTableVars, setTruthTableVars] = useState<string[]>([])
+  const [sessionId, setSessionId] = useState<string>("")
 
   const detectTruthTableIntent = (text: string): boolean => {
     const lc = text.toLowerCase()
@@ -308,6 +392,13 @@ function AnalyzeInterface() {
     return Array.from(new Set(picked.slice(0, 6))).map(v => v)
   }
 
+  // Initialize session ID
+  useEffect(() => {
+    // Generate new session ID for each page load
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    setSessionId(newSessionId)
+  }, [])
+
   useEffect(() => {
     const shouldShow = detectTruthTableIntent(expression)
     setShowTruthTableBuilder(shouldShow)
@@ -339,7 +430,11 @@ function AnalyzeInterface() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question: expression }),
+        body: JSON.stringify({ 
+          question: expression,
+          student_id: studentId,
+          session_id: sessionId
+        }),
       })
 
       if (!response.ok) {
@@ -413,6 +508,9 @@ function AnalyzeInterface() {
           body: JSON.stringify({
             expression: expression, // Send original expression
             user_answer: userAnswer,
+            student_id: studentId,
+            session_id: sessionId,
+            problem_type: problemType
           }),
         });
 
@@ -462,6 +560,11 @@ function AnalyzeInterface() {
             correct_answer: steps[currentStep].answer,
             step: steps[currentStep].content,
             is_question: isAskingQuestion,
+            student_id: studentId,
+            session_id: sessionId,
+            question: originalExpression,
+            problem_type: problemType,
+            step_number: steps[currentStep].number
           }),
         });
 
@@ -530,7 +633,12 @@ function AnalyzeInterface() {
         body: JSON.stringify({
           step: steps[currentStep].content,
           correct_answer: steps[currentStep].answer,
-          request_hint: true
+          request_hint: true,
+          student_id: studentId,
+          session_id: sessionId,
+          question: originalExpression,
+          problem_type: problemType,
+          step_number: steps[currentStep].number
         }),
       });
 
@@ -553,6 +661,11 @@ function AnalyzeInterface() {
       <CardHeader>
         <CardTitle>Analyze Question</CardTitle>
         <CardDescription>Enter a question to get a step-by-step breakdown</CardDescription>
+        {studentId && (
+          <div className="text-sm text-gray-600 mt-2">
+            Student ID: {studentId}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={handleAnalyze} className="space-y-4">
