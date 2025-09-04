@@ -14,6 +14,7 @@ import { BACKEND_URL } from "@/lib/utils";
 import { customFetch } from "@/lib/utils";
 import TruthTableBuilder from "@/components/TruthTableBuilder";
 import LoginModal from "@/components/LoginModal";
+import HistoryTab from "@/components/HistoryTab";
 
 
 
@@ -99,7 +100,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {studentInfo && (
               <div className="text-sm text-gray-600">
-                Welcome, {studentInfo.name || studentInfo.studentId}
+                Welcome, {studentInfo.name || 'Student'} (ID: {studentInfo.studentId})
               </div>
             )}
             <Button variant="outline" onClick={handleLogout}>
@@ -108,13 +109,14 @@ export default function Home() {
           </div>
         </div>
 
-        <Tabs defaultValue="chat" className="w-full">
+        <Tabs defaultValue="analyze" className="w-full">
           <TabsList className="flex w-full justify-between">
             {/* <TabsTrigger value="chat">Chat</TabsTrigger> */}
             <TabsTrigger value="analyze" className="flex-1">Analyze Expression</TabsTrigger>
             <TabsTrigger value="inference" className="flex-1">Inference</TabsTrigger>
             <TabsTrigger value="proof" className="flex-1">Proof</TabsTrigger>
             <TabsTrigger value="upload" className="flex-1">Upload Docs</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
             
           </TabsList>
 
@@ -137,6 +139,10 @@ export default function Home() {
 
           <TabsContent value="proof" className="mt-4">
             <ProofInterface />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <HistoryTab studentId={studentInfo?.studentId} />
           </TabsContent>
         </Tabs>
       </div>
